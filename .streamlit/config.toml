@@ -1,6 +1,12 @@
 [theme]
-backgroundColor="#ECE1A2"
-secondaryBackgroundColor="#ecdcaa"
-textColor="#0e0f10"
-font="serif"
+# Couleur d'arrière-plan de la barre latérale et du corps du texte (déjà en noir/gris dans votre CSS)
+base="dark" 
+# Couleur du fond des cartes et autres éléments (votre CSS personnalisé le remplace en partie)
+backgroundColor="#1a1d29"
+# Couleur principale des boutons, sliders et autres éléments interactifs
+primaryColor="#2196F3" # Exemple: un bleu vif
+# Couleur de la police (texte)
+textColor="#FAFAFA"
+# Couleur secondaire des éléments de fond (e.g., les hover des boutons)
+secondaryBackgroundColor="#262730"
 
