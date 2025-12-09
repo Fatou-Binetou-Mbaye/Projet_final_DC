@@ -8,8 +8,7 @@ import sqlite3
 from datetime import datetime
 import time
 import os
-# Import numpy or ensure pandas is available for NaN check
-import numpy as np
+import numpy as np # Ajouté pour les vérifications robustes de NaN
 
 # Page configuration
 st.set_page_config(
@@ -401,11 +400,282 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### 📌 Info")
 st.sidebar.info("Real estate data scraping and analysis application for Coinafrica Senegal")
 
-# Home page is unchanged... (omitted for brevity)
+# Home page
+if page == "🏠 Home":
+    st.markdown("""
+    <div class="custom-card">
+        <h2 style='text-align: center; color: #FFE66D;'>👋 Welcome to Coinafrica Scraper!</h2>
+        <p style='text-align: center; font-size: 1.1em; color: #B8B8B8; margin-top: 15px;'>
+            Your complete solution for real estate data scraping and analysis in Senegal
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Category cards
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="category-card">
+            <div class="category-icon">🏡</div>
+            <div class="category-title">Villas</div>
+            <p style='color: #B8B8B8; font-size: 1.1em;'>
+                ✓ Ad type (sale/rental)<br>
+                ✓ Number of rooms<br>
+                ✓ Price<br>
+                ✓ Address<br>
+                ✓ Image link
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="category-card">
+            <div class="category-icon">🏞️</div>
+            <div class="category-title">Terrains</div>
+            <p style='color: #B8B8B8; font-size: 1.1em;'>
+                ✓ Surface area<br>
+                ✓ Price<br>
+                ✓ Address<br>
+                ✓ Image link<br>
+                ✓ Details
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="category-card">
+            <div class="category-icon">🏢</div>
+            <div class="category-title">Apartments</div>
+            <p style='color: #B8B8B8; font-size: 1.1em;'>
+                ✓ Number of rooms<br>
+                ✓ Price<br>
+                ✓ Address<br>
+                ✓ Image link<br>
+                ✓ Details
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # Features section
+    st.markdown('<h2 class="section-header">🎯 Main Features</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        <div class="custom-card">
+            <h3 style='color: #FF6B6B;'>🔍 Intelligent Scraping</h3>
+            <p style='color: #B8B8B8;'>
+                Automatically collect data from multiple pages with smart error handling and real-time progress tracking.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div class="custom-card">
+            <h3 style='color: #FF6B6B;'>📊 Interactive Visualizations</h3>
+            <p style='color: #B8B8B8;'>
+                Explore your data with dynamic charts and interactive dashboards to analyze Senegalese real estate market trends.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="custom-card">
+            <h3 style='color: #FF6B6B;'>💾 Secure Storage</h3>
+            <p style='color: #B8B8B8;'>
+                All your data is saved in a local SQLite database with easy CSV export for external analysis.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div class="custom-card">
+            <h3 style='color: #FF6B6B;'>📈 Advanced Analytics</h3>
+            <p style='color: #B8B8B8;'>
+                Get insights on popular locations, price trends and market statistics with customizable reports.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-# Scraping page is unchanged... (omitted for brevity)
+# Scraping page
+elif page == "🔍 Scrape Data":
+    st.markdown('<h2 class="section-header">🔍 Data Collection</h2>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="custom-card">
+        <p style='font-size: 1.1em; color: #B8B8B8;'>
+            Select a category and the number of pages to scrape. Data will be automatically saved to the database.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        category = st.selectbox(
+            "🎯 Category to scrape:",
+            ["🏡 Villas", "🏞️ Terrains", "🏢 Apartments"]
+        )
+    
+    with col2:
+        num_pages = st.number_input(
+            "📄 Number of pages:",
+            min_value=1,
+            max_value=50,
+            value=3,
+            step=1
+        )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.button("🚀 START SCRAPING", type="primary", use_container_width=True):
+        with st.spinner("🔄 Scraping in progress..."):
+            if category == "🏡 Villas":
+                df = scrape_villas(num_pages)
+                save_to_db(df, 'villas')
+                st.success(f"✅ {len(df)} villas scraped and saved!")
+                
+            elif category == "🏞️ Terrains":
+                df = scrape_terrains(num_pages)
+                save_to_db(df, 'terrains')
+                st.success(f"✅ {len(df)} terrains scraped and saved!")
+                
+            else:
+                df = scrape_apartments(num_pages)
+                save_to_db(df, 'apartments')
+                st.success(f"✅ {len(df)} apartments scraped and saved!")
+                
+            st.dataframe(df, use_container_width=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download data (CSV)",
+                data=csv,
+                file_name=f'{category.lower()}_scraped_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
+                mime='text/csv',
+                use_container_width=True
+            )
 
-# CSV data page is unchanged... (omitted for brevity)
+# CSV data page
+elif page == "📥 CSV Data":
+    st.markdown('<h2 class="section-header">📥 CSV Data Explorer</h2>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="custom-card">
+        <p style='font-size: 1.1em; color: #B8B8B8;'>
+            View and analyze your existing CSV data files from the data/ directory
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    data_type = st.selectbox(
+        "📂 Data type:",
+        ["🏡 Villas", "🏞️ Terrains", "🏢 Apartments"]
+    )
+    
+    file_mapping = {
+        "🏡 Villas": "data/Villas.csv",
+        "🏞️ Terrains": "data/terrains_data.csv",
+        "🏢 Apartments": "data/Apartments_data.csv"
+    }
+    
+    # Try loading data from file system first
+    file_path = file_mapping.get(data_type)
+    df = pd.DataFrame()
+    
+    try:
+        if file_path and os.path.exists(file_path):
+            df = pd.read_csv(file_path)
+            st.success(f"✅ File loaded: `{file_path}`")
+        else:
+             # Try loading from DB if CSV doesn't exist
+            table_mapping = {
+                "🏡 Villas": "villas",
+                "🏞️ Terrains": "terrains",
+                "🏢 Apartments": "apartments"
+            }
+            df = load_from_db(table_mapping[data_type])
+            if len(df) == 0:
+                 raise FileNotFoundError # Trigger the FileNotFoundError block if DB is also empty
+
+        
+        # Display statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📊 Rows", df.shape[0])
+        with col2:
+            st.metric("📋 Columns", df.shape[1])
+        with col3:
+            st.metric("⚠️ Missing values", df.isnull().sum().sum())
+        with col4:
+            st.metric("🔄 Duplicates", df.duplicated().sum())
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Display data preview
+        st.markdown("### 👁️ Data Preview")
+        st.dataframe(df.head(20), use_container_width=True)
+        
+        # Missing values visualization
+        if df.isnull().sum().sum() > 0:
+            st.markdown("### ⚠️ Missing values per column")
+            missing_data = df.isnull().sum()
+            missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
+            
+            fig = px.bar(
+                x=missing_data.values,
+                y=missing_data.index,
+                orientation='h',
+                title="Distribution of missing values",
+                color=missing_data.values,
+                color_continuous_scale='Reds'
+            )
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font_color='#FAFAFA'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Download button
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label=f"📥 Download {data_type}",
+            data=csv,
+            file_name=f'{data_type.lower().replace(" ", "_")}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
+            mime='text/csv',
+            type="primary",
+            use_container_width=True
+        )
+        
+    except FileNotFoundError:
+        st.error(f"❌ File not found: `{file_path}`")
+        st.info("💡 Make sure your CSV files are in the 'data/' directory with the correct names or use the 'Scrape Data' section to generate new data.")
+        
+        uploaded_file = st.file_uploader("📤 Or upload your CSV file:", type=['csv'])
+        
+        if uploaded_file is not None:
+            df_uploaded = pd.read_csv(uploaded_file)
+            st.success("✅ File uploaded!")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Rows", df_uploaded.shape[0])
+            with col2:
+                st.metric("Columns", df_uploaded.shape[1])
+            with col3:
+                st.metric("Missing values", df_uploaded.isnull().sum().sum())
+            
+            st.dataframe(df_uploaded.head(10), use_container_width=True)
 
 # Dashboard page
 elif page == "📊 Dashboard":
@@ -426,13 +696,13 @@ elif page == "📊 Dashboard":
             "🏢 Apartments": "data/Apartments_data.csv"
         }
         # Check if file exists, if not, try DB later
-        csv_path = file_mapping[data_source]
-        if os.path.exists(csv_path):
+        csv_path = file_mapping.get(data_source)
+        if csv_path and os.path.exists(csv_path):
              df = pd.read_csv(csv_path)
              st.info("📁 Data loaded from CSV file")
         else:
-             raise FileNotFoundError
-
+             raise FileNotFoundError # Go to DB loading section
+             
     except FileNotFoundError:
         table_mapping = {
             "🏡 Villas": "villas",
@@ -443,8 +713,8 @@ elif page == "📊 Dashboard":
         if len(df) > 0:
             st.info("💾 Data loaded from database")
         else:
-             # This will be caught later if df is still empty
-             pass
+             pass # df remains empty
+             
     except Exception as e:
         st.error(f"An unexpected error occurred during data loading: {e}")
     
@@ -464,7 +734,7 @@ elif page == "📊 Dashboard":
             if 'address' in df.columns:
                 st.metric("📍 Locations", df['address'].nunique())
         
-        # --- FIX APPLIED HERE: Robust NaN Check for Avg Price ---
+        # --- FIX: Robust NaN Check for Avg Price ---
         with col3:
             if 'price_numeric' in df.columns and len(df)>0:
                 avg_price = df['price_numeric'].mean()
@@ -475,7 +745,7 @@ elif page == "📊 Dashboard":
             else:
                  st.metric("💰 Avg Price", "N/A")
 
-        # --- FIX APPLIED HERE: Robust NaN Check for Avg Rooms/Surface ---
+        # --- FIX: Robust NaN Check for Avg Rooms/Surface ---
         with col4:
             if 'number_of_rooms' in df.columns and len(df)>0:
                 # Safe way to extract numeric room count and calculate mean
@@ -486,7 +756,6 @@ elif page == "📊 Dashboard":
                 if pd.isna(avg_rooms):
                     st.metric("🛏️ Avg Rooms", "N/A")
                 else:
-                    # The f-string formatting is now safe
                     st.metric("🛏️ Avg Rooms", f"{avg_rooms:.1f}")
                     
             elif 'surface' in df.columns and data_source == "🏞️ Terrains" and len(df)>0:
@@ -504,7 +773,7 @@ elif page == "📊 Dashboard":
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Visualizations (unchanged, but relying on the cleaned price_numeric column)
+        # Visualizations
         col1, col2 = st.columns(2)
         
         with col1:
@@ -527,9 +796,9 @@ elif page == "📊 Dashboard":
                 st.plotly_chart(fig1, use_container_width=True)
         
         with col2:
-            if 'price_numeric' in df.columns and len(df)>0 and not df['price_numeric'].empty:
+            if 'price_numeric' in df.columns and len(df)>0 and not df['price_numeric'].empty and df['price_numeric'].max() > 0:
                 # Filter out extreme prices for a better visual distribution (e.g., top 95%)
-                price_limit = df['price_numeric'].quantile(0.95) if df['price_numeric'].quantile(0.95) > 0 else df['price_numeric'].max()
+                price_limit = df['price_numeric'].quantile(0.95)
                 df_filtered = df[df['price_numeric'] <= price_limit]
                 
                 fig2 = px.histogram(
@@ -549,8 +818,8 @@ elif page == "📊 Dashboard":
                 # Alternative visualization for terrains (e.g., Surface distribution)
                 surface_numeric_series = df['surface'].astype(str).str.extract('(\d+)').astype(float).dropna()
                 
-                if not surface_numeric_series.empty:
-                    surface_limit = surface_numeric_series.quantile(0.95) if surface_numeric_series.quantile(0.95) > 0 else surface_numeric_series.max()
+                if not surface_numeric_series.empty and surface_numeric_series.max() > 0:
+                    surface_limit = surface_numeric_series.quantile(0.95)
                     
                     fig2_alt = px.histogram(
                         surface_numeric_series[surface_numeric_series <= surface_limit],
@@ -567,6 +836,8 @@ elif page == "📊 Dashboard":
                     st.plotly_chart(fig2_alt, use_container_width=True)
                 else:
                     st.info("No surface data available to display distribution.")
+            else:
+                 st.info("No price data available or cleanable to display distribution.")
 
         
         # Data table
@@ -576,7 +847,7 @@ elif page == "📊 Dashboard":
     else:
         st.warning(f"❌ No data available for {data_source} (check CSV files in 'data/' or database 'coinafrica.db').")
 
-# Evaluation page (unchanged, includes the buttons)
+# Evaluation page
 elif page == "📝 Evaluation":
     st.markdown('<h2 class="section-header">📝 Project Evaluation & Outlook</h2>', unsafe_allow_html=True)
     
