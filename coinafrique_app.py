@@ -829,6 +829,76 @@ elif page == "📝 Evaluation":
     </div>
     """, unsafe_allow_html=True)
     
+    st.markdown('<h2 class="section-header">🗳️ Evaluation & Feedback</h2>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="custom-card">
+        <p style='color: #B8B8B8; font-size: 1.1em; text-align: center;'>
+            Aidez-nous à améliorer l'application en nous laissant vos commentaires via l'un des formulaires ci-dessous.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_kobo, col_google = st.columns(2)
+    
+    # KoboToolbox Button (Red Gradient)
+    with col_kobo:
+        kobo_url = "https://ee.kobotoolbox.org/single/g3s1QGVs"
+        st.markdown(f"""
+        <a href="{kobo_url}" target="_blank" style="text-decoration: none;">
+            <button style='
+                background: linear-gradient(120deg, #FF6B6B 0%, #FF8E53 100%);
+                color: white;
+                border: none;
+                border-radius: 10px;
+                padding: 12px 30px;
+                font-weight: 600;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+                width: 100%;
+                cursor: pointer;
+                font-size: 1.1em;
+            '>
+                🔗 Formulaire KoboToolbox
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
+    
+    # Google Forms Button (Yellow Gradient for Contrast)
+    with col_google:
+        google_url = "https://docs.google.com/forms/d/e/1FAIpQLSeJFo9UsSKWnlhXA0aHYVxeKd06w1FthiCluXrqmcXkwXutbA/viewform?usp=dialog"
+        st.markdown(f"""
+        <a href="{google_url}" target="_blank" style="text-decoration: none;">
+            <button style='
+                background: linear-gradient(120deg, #FFE66D 0%, #FFD700 100%); 
+                color: #262730; 
+                border: none;
+                border-radius: 10px;
+                padding: 12px 30px;
+                font-weight: 600;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 15px rgba(255, 230, 109, 0.5);
+                width: 100%;
+                cursor: pointer;
+                font-size: 1.1em;
+            '>
+                🔗 Google Form
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="custom-card" style='text-align: center; background: linear-gradient(135deg, #FF6B6B 0%, #FFE66D 100%);'>
+        <h3 style='color: #262730; margin-bottom: 10px;'>🙏 Merci pour votre participation !</h3>
+        <p style='color: #262730; font-size: 1.1em;'>
+            Vos commentaires nous aident à améliorer constamment l'application.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    
     st.markdown('<h2 class="section-header">🚀 Future Improvements (Next Steps)</h2>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
