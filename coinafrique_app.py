@@ -2,35 +2,30 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import re 
-import os # Necessary for path handling
 from requests import get
 from bs4 import BeautifulSoup as bs
+import sqlite3
 from datetime import datetime
 import time
+import os
 
-# --- Page Configuration ---
+# Page configuration
 st.set_page_config(
-    page_title="Dakar Real Estate - Data Analysis",
-    page_icon="🏡",
+    page_title="Coinafrica - Data Scraper & Dashboard",
+    page_icon="🏘️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- Global Variables ---
-KOBO_TOOLBOX_LINK = "https://ee.kobotoolbox.org/single/g3s1QGVs"
-GOOGLE_FORM_LINK = "https://docs.google.com/forms/d/e/1FAIpQLSeJFo9UsSKWnlhXA0aHYVxeKd06w1FthiCluXrqmcXutbA/viewform?usp=dialog"
-
-# --- Custom CSS (Same as before) ---
+# Custom CSS for beautiful interface
 st.markdown("""
 <style>
-    /* General Style */
+    /* General style */
     .main {
         background: linear-gradient(135deg, #0E1117 0%, #1a1d29 100%);
-        color: #f0f2f6;
     }
     
-    /* Custom Cards */
+    /* Custom cards */
     .custom-card {
         background: linear-gradient(135deg, #262730 0%, #1e2029 100%);
         padding: 25px;
@@ -43,489 +38,828 @@ st.markdown("""
     
     .custom-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 12px 40px rgba(255, 107, 107, 0.3);
+        box-shadow: 0 12px 40px rgba(255, 107, 107, 0.2);
     }
     
-    /* Headers */
-    h1, h2, h3 {
-        color: #FF6B6B; /* Main color */
+    /* Main title with gradient */
+    .main-title {
+        background: linear-gradient(120deg, #FF6B6B 0%, #FFE66D 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 3.5em;
+        font-weight: 900;
+        text-align: center;
+        margin-bottom: 10px;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
-
-    /* Raw data containers */
-    .data-container {
+    
+    /* Subtitle */
+    .subtitle {
+        text-align: center;
+        color: #B8B8B8;
+        font-size: 1.2em;
+        margin-bottom: 30px;
+    }
+    
+    /* Custom buttons */
+    .stButton > button {
+        background: linear-gradient(120deg, #FF6B6B 0%, #FF8E53 100%);
+        color: white;
+        border: none;
         border-radius: 10px;
-        padding: 15px;
-        background-color: #1e2029;
+        padding: 12px 30px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+    }
+    
+    /* Custom metrics */
+    div[data-testid="stMetricValue"] {
+        color: #FF6B6B;
+        font-size: 2em;
+        font-weight: 700;
+    }
+    
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1a1d29 0%, #262730 100%);
+        border-right: 2px solid rgba(255, 107, 107, 0.2);
+    }
+    
+    /* Category cards */
+    .category-card {
+        background: linear-gradient(135deg, #262730 0%, #2a2d3a 100%);
+        padding: 30px;
+        border-radius: 20px;
+        text-align: center;
+        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.15);
+        border: 2px solid rgba(255, 107, 107, 0.3);
+        transition: all 0.4s ease;
+        height: 100%;
+    }
+    
+    .category-card:hover {
+        transform: scale(1.05);
+        box-shadow: 0 12px 35px rgba(255, 107, 107, 0.25);
+        border-color: #FF6B6B;
+    }
+    
+    .category-icon {
+        font-size: 4em;
         margin-bottom: 15px;
+    }
+    
+    .category-title {
+        color: #FF6B6B;
+        font-size: 1.8em;
+        font-weight: 700;
+        margin-bottom: 15px;
+    }
+    
+    /* Section header */
+    .section-header {
+        color: #FF6B6B;
+        font-size: 2em;
+        font-weight: 700;
+        margin: 30px 0 20px 0;
+        border-bottom: 3px solid #FF6B6B;
+        padding-bottom: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Data Cleaning Functions ---
+# Main title
+st.markdown('<h1 class="main-title">🏘️ COINAFRICA DATA SCRAPER & DASHBOARD 📊</h1>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Intelligent real estate data scraping and analysis in Senegal</p>', unsafe_allow_html=True)
 
-def clean_price(price):
-    """Clean the price column (CFA to float, handling 'millions' and 'on demand')."""
-    if pd.isna(price) or str(price).strip().lower() in ['prix sur demande', 'price on demand', '']:
-        return None
-    price_str = str(price).replace(' CFA', '').replace(' ', '').replace('FCFA', '').replace('.', '') 
+# SQLite database connection
+def init_database():
+    conn = sqlite3.connect('coinafrica.db')
+    c = conn.cursor()
     
-    if 'million' in price_str.lower():
-         match = re.search(r'(\d+(\.\d+)?)', price_str.lower())
-         if match:
-             try:
-                 return float(match.group(0)) * 1000000
-             except ValueError:
-                 return None
+    # Villas table
+    c.execute('''CREATE TABLE IF NOT EXISTS villas
+             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+              details TEXT,
+              price TEXT,
+              address TEXT,
+              number_of_rooms TEXT,
+              image_link TEXT,
+              scraped_date TIMESTAMP)''')
     
-    try:
-        return float(price_str)
-    except ValueError:
-        return None
-
-def clean_area(area):
-    """Clean the area column (extract m² value)."""
-    if pd.isna(area) or area == '' or isinstance(area, (int, float)):
-        return area
-
-    area_str = str(area).replace('m2', '').replace('m²', '').replace(' ', '').replace(',', '.')
-    match = re.search(r'\d+(\.\d+)?', area_str)
-    if match:
-        try:
-            return float(match.group(0))
-        except ValueError:
-            return None
-    return None
-
-def extract_city(address):
-    """Extract City/Zone from the address string."""
-    if pd.isna(address) or address == '':
-        return 'Unspecified'
-    parts = str(address).split(',')
-    if 'sénégal' in str(address).lower() and len(parts) >= 2:
-        return parts[-2].strip()
-    return parts[0].strip()
-
-@st.cache_data
-def load_and_clean_data(file_name, property_type):
-    """Loads, cleans, and standardizes the data based on the file type's column structure."""
-    # Load files from the 'data' directory
-    file_path = os.path.join('data', file_name)
+    # Terrains table
+    c.execute('''CREATE TABLE IF NOT EXISTS terrains
+             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+              details TEXT,
+              price TEXT,
+              address TEXT,
+              surface TEXT,
+              image_link TEXT,
+              scraped_date TIMESTAMP)''')
     
-    try:
-        df = pd.read_csv(file_path)
-    except FileNotFoundError:
-        st.error(f"File not found: {file_path}. Please ensure '{file_name}' is in the 'data' directory.")
-        return pd.DataFrame()
-
-    df['type'] = property_type
-
-    # --- Step 1: Map Specific Columns based on File Type (from notebook analysis) ---
-    col_mapping = {}
-    if property_type == "Land":
-        # Columns based on terrains_data.csv snippet
-        col_mapping = {
-            'price_raw': 'price', 
-            'area_raw': 'area', 
-            'address_raw': 'address', 
-            'link_raw': 'containers'
-        }
-    elif property_type == "Villa":
-        # Columns based on Villas.csv snippet and notebook (assuming 'price' exists)
-        col_mapping = {
-            'price_raw': 'price', 
-            'area_raw': 'Surface', 
-            'address_raw': 'Address', 
-            'rooms_raw': 'number of rooms', 
-            'baths_raw': 'number of bathrooms', 
-            'link_raw': 'Containers_link' 
-        }
-    elif property_type == "Apartment":
-        # Columns based on Apartments_data.csv snippet and notebook
-        col_mapping = {
-            'price_raw': 'price', 
-            'area_raw': 'surface area', 
-            'address_raw': 'address', 
-            'rooms_raw': 'number_of_rooms', 
-            'baths_raw': 'number_of_bathrooms', 
-            'link_raw': 'containers_links' 
-        }
-
-    # --- Step 2: Apply Cleaning and Standardization ---
-
-    # Price
-    price_col = col_mapping.get('price_raw')
-    if price_col and price_col in df.columns:
-        df['price_cleaned'] = df[price_col].apply(clean_price)
-    else:
-        st.warning(f"Price column ('{price_col}' or 'price') not found for {property_type}.")
-        df['price_cleaned'] = None
-
-    # Area
-    area_col = col_mapping.get('area_raw')
-    if area_col and area_col in df.columns:
-        df['area_cleaned'] = df[area_col].apply(clean_area)
-    else:
-        st.warning(f"Area column ('{area_col}') not found for {property_type}.")
-        df['area_cleaned'] = None
+    # Apartments table
+    c.execute('''CREATE TABLE IF NOT EXISTS apartments
+             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+              details TEXT,
+              price TEXT,
+              address TEXT,
+              number_of_rooms TEXT,
+              image_link TEXT,
+              scraped_date TIMESTAMP)''')
     
-    # Price per sqm calculation
-    if df['price_cleaned'].notna().any() and df['area_cleaned'].notna().any():
-        df['price_per_sqm'] = df.apply(
-            lambda row: row['price_cleaned'] / row['area_cleaned'] if row['area_cleaned'] and row['area_cleaned'] > 0 else None,
-            axis=1
-        )
-    else:
-         df['price_per_sqm'] = None
-    
-    # City/Zone Extraction
-    address_col = col_mapping.get('address_raw')
-    if address_col and address_col in df.columns:
-        df['city_zone'] = df[address_col].apply(extract_city)
-    else:
-        df['city_zone'] = 'Unspecified'
-        st.warning(f"Address column ('{address_col}') not found for {property_type}.")
+    conn.commit()
+    conn.close()
 
-    # Rooms and Bathrooms (for Villas and Apartments)
-    df['nb_rooms'] = None
-    df['nb_bathrooms'] = None
+init_database()
 
-    rooms_col = col_mapping.get('rooms_raw')
-    if rooms_col and rooms_col in df.columns:
-        df['nb_rooms'] = pd.to_numeric(df[rooms_col], errors='coerce')
+# Scraping function for villas
+def scrape_villas(num_pages):
+    df = pd.DataFrame()
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     
-    baths_col = col_mapping.get('baths_raw')
-    if baths_col and baths_col in df.columns:
-        df['nb_bathrooms'] = pd.to_numeric(df[baths_col], errors='coerce')
+    for index in range(1, num_pages + 1):
+        status_text.text(f"🔍 Scraping page {index}/{num_pages}...")
+        url = f'https://sn.coinafrique.com/categorie/villas?page={index}'
         
-    # Link
-    link_col = col_mapping.get('link_raw')
-    df['ad_link'] = df[link_col] if link_col and link_col in df.columns else None
+        try:
+            res = get(url, timeout=10)
+            soup = bs(res.content, 'html.parser')
+            containers = soup.find_all('div', class_='col s6 m4 l3')
+            
+            data = []
+            for container in containers:
+                try:
+                    # Optimized: Check if the property link is absolute or relative
+                    href = container.find('a')["href"]
+                    container_url = href if href.startswith('http') else "https://sn.coinafrique.com" + href
 
-    # Final columns to keep
-    final_cols = ['type', 'city_zone', 'price_cleaned', 'area_cleaned', 'price_per_sqm', 'nb_rooms', 'nb_bathrooms', 'ad_link']
-    df_final = df[[col for col in final_cols if col in df.columns] + [col for col in df.columns if col.startswith('web_scraper_') or col in ['address', 'Address', 'Surface', 'area', 'surface area']]].copy()
-
-    return df_final
-
-
-# Data Loading (Cached for speed) 
-all_data = []
-
-# List of files to load from the 'data' directory
-FILES_TO_LOAD = [
-    ("terrains_data.csv", "Land"),
-    ("Villas.csv", "Villa"),
-    ("Apartments_data.csv", "Apartment")
-]
-
-for file_name, property_type in FILES_TO_LOAD:
-    try:
-        data = load_and_clean_data(file_name, property_type)
-        if not data.empty:
-            all_data.append(data)
-    except Exception as e:
-        st.error(f"Error loading or cleaning {file_name}: {e}")
-
-# Concatenate cleaned data
-if all_data:
-    df_combined = pd.concat(all_data, ignore_index=True)
-else:
-    df_combined = pd.DataFrame()
-    st.error("No data could be loaded correctly. Please check that your files are in the 'data' directory and contain the expected columns.")
-
-
-# --- Visualization Functions ---
-
-def display_home():
-    """Displays the home page with project description and links."""
-    st.title("🏡 Dakar Real Estate Market Analysis")
+                    res_container = get(container_url, timeout=10)
+                    soup_container = bs(res_container.content, "html.parser")
+                    
+                    details = soup_container.find('h1', "title title-ad hide-on-large-and-down").text
+                    # Cleaning price: removing spaces and 'CFA'
+                    price_tag = soup_container.find('p', "price")
+                    price = "".join(price_tag.text.strip().split()).replace('CFA', '') if price_tag else None
+                    
+                    # Assuming address is the second 'valign-wrapper' for villas
+                    address_tags = soup_container.find_all('span', 'valign-wrapper')
+                    address = address_tags[1].text.strip() if len(address_tags) > 1 else None
+                    
+                    # Finding number of rooms
+                    p_details = soup_container.find_all('div', class_="details-characteristics")[0] if soup_container.find_all('div', class_="details-characteristics") else None
+                    j = p_details.find_all('span', 'qt') if p_details else []
+                    # First 'qt' element is often the number of rooms/pieces
+                    number_of_rooms = j[0].text.strip() if len(j) > 0 else None
+                    
+                    # Extracting image link from style attribute
+                    img = soup_container.find('div', class_="swiper-slide slide-clickable")
+                    style = img.get('style') if img else ''
+                    image_link = style.split('url(')[1].split(')')[0].strip('"') if style and 'url(' in style else None
+                    
+                    dic = {
+                        "details": details,
+                        "price": price,
+                        "address": address,
+                        "number_of_rooms": number_of_rooms,
+                        "image_link": image_link
+                    }
+                    data.append(dic)
+                except Exception as e:
+                    # print(f"Error on detail page: {e}") # For debugging
+                    pass
+            
+            DF = pd.DataFrame(data)
+            df = pd.concat([df, DF], ignore_index=True)
+            progress_bar.progress(index / num_pages)
+            time.sleep(1) # Be gentle with the website
+            
+        except Exception as e:
+            st.error(f"❌ Error scraping page {index}: {str(e)}")
     
-    # *** CORRECTION: Image loading line commented out to fix MediaFileStorageError ***
-    # st.image("Capture d’écran du 2025-12-09 11-19-03.png", caption="Adapted Application Example (based on your image)", use_column_width=True)
+    df = df.drop_duplicates()
+    status_text.text("✅ Scraping completed successfully!")
+    return df
 
+# Scraping function for terrains
+def scrape_terrains(num_pages):
+    df = pd.DataFrame()
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for index in range(1, num_pages + 1):
+        status_text.text(f"🔍 Scraping page {index}/{num_pages}...")
+        url = f'https://sn.coinafrique.com/categorie/terrains?page={index}'
+        
+        try:
+            res = get(url, timeout=10)
+            soup = bs(res.content, 'html.parser')
+            containers = soup.find_all('div', class_='col s6 m4 l3')
+            
+            data = []
+            for container in containers:
+                try:
+                    href = container.find('a')["href"]
+                    container_url = href if href.startswith('http') else "https://sn.coinafrique.com" + href
+                    res_container = get(container_url, timeout=10)
+                    soup_container = bs(res_container.content, "html.parser")
+                    
+                    details = soup_container.find('h1', "title title-ad hide-on-large-and-down").text
+                    # For terrains, the surface might be in the title (details) or in characteristics
+                    # We will keep using details as the surface field for simplicity as per the original code logic
+                    surface = details.strip() 
+                    
+                    price_tag = soup_container.find('p', "price")
+                    price = "".join(price_tag.text.strip().split()).replace('CFA', '') if price_tag else None
+                    
+                    # Assuming address is the first 'valign-wrapper' for terrains
+                    address_tags = soup_container.find_all('span', 'valign-wrapper')
+                    address = address_tags[0].text.strip() if len(address_tags) > 0 else None
+                    
+                    img = soup_container.find('div', class_="swiper-slide slide-clickable")
+                    style = img.get('style') if img else ''
+                    image_link = style.split('url(')[1].split(')')[0].strip('"') if style and 'url(' in style else None
+                    
+                    dic = {
+                        "details": details,
+                        "price": price,
+                        "address": address,
+                        "surface": surface,
+                        "image_link": image_link
+                    }
+                    data.append(dic)
+                except:
+                    pass
+            
+            DF = pd.DataFrame(data)
+            df = pd.concat([df, DF], ignore_index=True)
+            progress_bar.progress(index / num_pages)
+            time.sleep(1)
+            
+        except Exception as e:
+            st.error(f"❌ Error scraping page {index}: {str(e)}")
+    
+    df = df.drop_duplicates()
+    status_text.text("✅ Scraping completed successfully!")
+    return df
+
+# Scraping function for apartments
+def scrape_apartments(num_pages):
+    df = pd.DataFrame()
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for index in range(1, num_pages + 1):
+        status_text.text(f"🔍 Scraping page {index}/{num_pages}...")
+        url = f'https://sn.coinafrique.com/categorie/appartements?page={index}'
+        
+        try:
+            res = get(url, timeout=10)
+            soup = bs(res.content, 'html.parser')
+            containers = soup.find_all('div', class_='col s6 m4 l3')
+            
+            data = []
+            for container in containers:
+                try:
+                    href = container.find('a')["href"]
+                    container_url = href if href.startswith('http') else "https://sn.coinafrique.com" + href
+                    res_container = get(container_url, timeout=10)
+                    soup_container = bs(res_container.content, "html.parser")
+                    
+                    details = soup_container.find('h1', "title title-ad hide-on-large-and-down").text
+                    
+                    price_tag = soup_container.find('p', "price")
+                    price = "".join(price_tag.text.strip().split()).replace('CFA', '') if price_tag else None
+                    
+                    # Assuming address is the second 'valign-wrapper' for apartments
+                    address_tags = soup_container.find_all('span', 'valign-wrapper')
+                    address = address_tags[1].text.strip() if len(address_tags) > 1 else None
+                    
+                    # Finding number of rooms
+                    a_details = soup_container.find_all('div', class_="details-characteristics")[0] if soup_container.find_all('div', class_="details-characteristics") else None
+                    j = a_details.find_all('span', 'qt') if a_details else []
+                    # First 'qt' element is often the number of rooms/pieces
+                    number_of_rooms = j[0].text.strip() if len(j) > 0 else None
+                    
+                    img = soup_container.find('div', class_="swiper-slide slide-clickable")
+                    style = img.get('style') if img else ''
+                    image_link = style.split('url(')[1].split(')')[0].strip('"') if style and 'url(' in style else None
+                    
+                    dic = {
+                        "details": details,
+                        "price": price,
+                        "address": address,
+                        "number_of_rooms": number_of_rooms,
+                        "image_link": image_link
+                    }
+                    data.append(dic)
+                except:
+                    pass
+            
+            DF = pd.DataFrame(data)
+            df = pd.concat([df, DF], ignore_index=True)
+            progress_bar.progress(index / num_pages)
+            time.sleep(1)
+            
+        except Exception as e:
+            st.error(f"❌ Error scraping page {index}: {str(e)}")
+    
+    df = df.drop_duplicates()
+    status_text.text("✅ Scraping completed successfully!")
+    return df
+
+# Function to save to database
+def save_to_db(df, table_name):
+    conn = sqlite3.connect('coinafrica.db')
+    df['scraped_date'] = datetime.now()
+    df.to_sql(table_name, conn, if_exists='append', index=False)
+    conn.close()
+
+# Function to load from database
+def load_from_db(table_name):
+    conn = sqlite3.connect('coinafrica.db')
+    df = pd.read_sql(f'SELECT * FROM {table_name}', conn)
+    conn.close()
+    return df
+
+# Sidebar navigation
+st.sidebar.markdown("# 🗂️ Navigation")
+st.sidebar.markdown("---")
+page = st.sidebar.radio(
+    "Choose a section:",
+    ["🏠 Home", "🔍 Scrape Data", "📥 CSV Data", "📊 Dashboard", "📝 Evaluation"],
+    label_visibility="collapsed"
+)
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📌 Info")
+st.sidebar.info("Real estate data scraping and analysis application for Coinafrica Senegal")
+
+# Home page
+if page == "🏠 Home":
     st.markdown("""
     <div class="custom-card">
-        <h3 style='color: #FF6B6B;'>🚀 Project Description</h3>
-        <p style='font-size: 1.1em;'>
-            This Streamlit application showcases the results of your real estate Data Scraping project in Senegal. 
-            It aggregates and analyzes collected data on **Lands**, **Villas**, and **Apartments** from online sources. 
-        </p>
-        <p style='font-size: 1.1em;'>
-            The goal is to provide an overview of the market, compare prices by property type, and analyze geographic zones.
+        <h2 style='text-align: center; color: #FFE66D;'>👋 Welcome to Coinafrica Scraper!</h2>
+        <p style='text-align: center; font-size: 1.1em; color: #B8B8B8; margin-top: 15px;'>
+            Your complete solution for real estate data scraping and analysis in Senegal
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Links for data collection and feedback
-    st.markdown("## 🔗 Useful Links")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Category cards
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="category-card">
+            <div class="category-icon">🏡</div>
+            <div class="category-title">Villas</div>
+            <p style='color: #B8B8B8; font-size: 1.1em;'>
+                ✓ Ad type (sale/rental)<br>
+                ✓ Number of rooms<br>
+                ✓ Price<br>
+                ✓ Address<br>
+                ✓ Image link
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="category-card">
+            <div class="category-icon">🏞️</div>
+            <div class="category-title">Terrains</div>
+            <p style='color: #B8B8B8; font-size: 1.1em;'>
+                ✓ Surface area<br>
+                ✓ Price<br>
+                ✓ Address<br>
+                ✓ Image link<br>
+                ✓ Details
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="category-card">
+            <div class="category-icon">🏢</div>
+            <div class="category-title">Apartments</div>
+            <p style='color: #B8B8B8; font-size: 1.1em;'>
+                ✓ Number of rooms<br>
+                ✓ Price<br>
+                ✓ Address<br>
+                ✓ Image link<br>
+                ✓ Details
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # Features section
+    st.markdown('<h2 class="section-header">🎯 Main Features</h2>', unsafe_allow_html=True)
+    
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown(f"""
-        <div class="custom-card" style='text-align: center; background: linear-gradient(135deg, #2196F3 0%, #4CAF50 100%);'>
-            <h3 style='color: white; margin-bottom: 10px;'>📊 Land Data Collection</h3>
-            <a href="{KOBO_TOOLBOX_LINK}" target="_blank">
-                <button style='background-color: white; color: #2196F3; padding: 15px 40px; border: none; border-radius: 10px; 
-                               font-size: 1.1em; font-weight: 600; cursor: pointer; width: 100%;
-                               box-shadow: 0 4px 15px rgba(33, 150, 243, 0.3);'>
-                    🔗 Open KoboToolbox
-                </button>
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(f"""
-        <div class="custom-card" style='text-align: center; background: linear-gradient(135deg, #FF6B6B 0%, #FFD700 100%);'>
-            <h3 style='color: white; margin-bottom: 10px;'>⭐ Your Feedback</h3>
-            <a href="{GOOGLE_FORM_LINK}" target="_blank">
-                <button style='background-color: white; color: #FF6B6B; padding: 15px 40px; border: none; border-radius: 10px; 
-                               font-size: 1.1em; font-weight: 600; cursor: pointer; width: 100%;
-                               box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);'>
-                    🔗 Open Google Forms
-                </button>
-            </a>
+        st.markdown("""
+        <div class="custom-card">
+            <h3 style='color: #FF6B6B;'>🔍 Intelligent Scraping</h3>
+            <p style='color: #B8B8B8;'>
+                Automatically collect data from multiple pages with smart error handling and real-time progress tracking.
+            </p>
         </div>
         """, unsafe_allow_html=True)
         
+        st.markdown("""
+        <div class="custom-card">
+            <h3 style='color: #FF6B6B;'>📊 Interactive Visualizations</h3>
+            <p style='color: #B8B8B8;'>
+                Explore your data with dynamic charts and interactive dashboards to analyze Senegalese real estate market trends.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="custom-card">
+            <h3 style='color: #FF6B6B;'>💾 Secure Storage</h3>
+            <p style='color: #B8B8B8;'>
+                All your data is saved in a local SQLite database with easy CSV export for external analysis.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div class="custom-card">
+            <h3 style='color: #FF6B6B;'>📈 Advanced Analytics</h3>
+            <p style='color: #B8B8B8;'>
+                Get insights on popular locations, price trends and market statistics with customizable reports.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+# Scraping page
+elif page == "🔍 Scrape Data":
+    st.markdown('<h2 class="section-header">🔍 Data Collection</h2>', unsafe_allow_html=True)
+    
     st.markdown("""
-    <div class="custom-card" style='text-align: center; background: linear-gradient(135deg, #38d390 0%, #2ec06f 100%);'>
-        <h3 style='color: white; margin-bottom: 10px;'>🙏 Thank you for your participation!</h3>
-        <p style='color: white; font-size: 1.1em;'>
-            Your feedback helps us constantly improve the analysis.
+    <div class="custom-card">
+        <p style='font-size: 1.1em; color: #B8B8B8;'>
+            Select a category and the number of pages to scrape. Data will be automatically saved to the database.
         </p>
     </div>
     """, unsafe_allow_html=True)
-
-
-def display_dashboard(df, property_type):
-    """Displays the dashboard for a given property type."""
     
-    st.title(f"📊 Dashboard: {property_type}s")
+    col1, col2 = st.columns([2, 1])
     
-    df_filtered = df[df['type'] == property_type].dropna(subset=['price_cleaned', 'area_cleaned']).copy()
-    
-    if df_filtered.empty:
-        st.warning(f"No cleaned data available for {property_type}s.")
-        return
-
-    # Key Statistics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    avg_price = df_filtered['price_cleaned'].mean()
-    avg_area = df_filtered['area_cleaned'].mean()
-    avg_price_per_sqm = df_filtered['price_per_sqm'].mean()
-    
-    col1.metric("Number of Listings", len(df_filtered))
-    col2.metric("Average Price", f"{avg_price / 1000000:,.2f} M CFA", delta="Selling Price")
-    col3.metric("Average Area", f"{avg_area:,.0f} sqm", delta="Property Size")
-    col4.metric("Average Price/sqm", f"{avg_price_per_sqm:,.0f} CFA", delta="Key Indicator")
-    
-    st.markdown("---")
-
-    # Analysis by Geographic Zone
-    st.header("📈 Average Price by Zone")
-    
-    # Top 10 most represented zones
-    zone_counts = df_filtered['city_zone'].value_counts().nlargest(10).index
-    df_top_zones = df_filtered[df_filtered['city_zone'].isin(zone_counts)]
-    
-    price_by_zone = df_top_zones.groupby('city_zone')['price_cleaned'].mean().sort_values(ascending=False).reset_index()
-    price_by_zone['price_million_cfa'] = price_by_zone['price_cleaned'] / 1000000
-    
-    fig_zone_price = px.bar(
-        price_by_zone, 
-        x='city_zone', 
-        y='price_million_cfa', 
-        color='price_million_cfa',
-        color_continuous_scale=px.colors.sequential.Plasma,
-        title=f"Top 10: Average Price (M CFA) of {property_type}s by Zone"
-    )
-    fig_zone_price.update_layout(xaxis_title="Geographic Zone", yaxis_title="Average Price (M CFA)", uniformtext_minsize=8, uniformtext_mode='hide')
-    st.plotly_chart(fig_zone_price, use_container_width=True)
-
-    st.markdown("---")
-    
-    # Price and Area Distribution
-    col_dist1, col_dist2 = st.columns(2)
-    
-    with col_dist1:
-        st.header("Area Distribution")
-        fig_area = px.histogram(
-            df_filtered, 
-            x='area_cleaned', 
-            nbins=30, 
-            title=f"Distribution of Areas (sqm) for {property_type}s"
+    with col1:
+        category = st.selectbox(
+            "🎯 Category to scrape:",
+            ["🏡 Villas", "🏞️ Terrains", "🏢 Apartments"]
         )
-        fig_area.update_layout(xaxis_title="Area (sqm)", yaxis_title="Number of Listings")
-        st.plotly_chart(fig_area, use_container_width=True)
     
-    with col_dist2:
-        st.header("Price vs Area Relationship")
-        fig_scatter = px.scatter(
-            df_filtered, 
-            x='area_cleaned', 
-            y='price_cleaned', 
-            hover_data=['city_zone'],
-            color='city_zone',
-            title=f"Price vs Area (sqm) for {property_type}s"
+    with col2:
+        num_pages = st.number_input(
+            "📄 Number of pages:",
+            min_value=1,
+            max_value=50,
+            value=3,
+            step=1
         )
-        fig_scatter.update_layout(
-            xaxis_title="Area (sqm)", 
-            yaxis_title="Price (CFA)", 
-            yaxis=dict(tickformat=',.0f')
-        )
-        st.plotly_chart(fig_scatter, use_container_width=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.button("🚀 START SCRAPING", type="primary", use_container_width=True):
+        with st.spinner("🔄 Scraping in progress..."):
+            if category == "🏡 Villas":
+                df = scrape_villas(num_pages)
+                save_to_db(df, 'villas')
+                st.success(f"✅ {len(df)} villas scraped and saved!")
+                
+            elif category == "🏞️ Terrains":
+                df = scrape_terrains(num_pages)
+                save_to_db(df, 'terrains')
+                st.success(f"✅ {len(df)} terrains scraped and saved!")
+                
+            else:
+                df = scrape_apartments(num_pages)
+                save_to_db(df, 'apartments')
+                st.success(f"✅ {len(df)} apartments scraped and saved!")
+                
+            st.dataframe(df, use_container_width=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download data (CSV)",
+                data=csv,
+                file_name=f'{category.lower()}_scraped_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
+                mime='text/csv',
+                use_container_width=True
+            )
 
-
-def display_comparison(df):
-    """Displays a comparative analysis between different property types."""
+# CSV data page
+elif page == "📥 CSV Data":
+    st.markdown('<h2 class="section-header">📥 CSV Data Explorer</h2>', unsafe_allow_html=True)
     
-    st.title("⚖️ Comparative Analysis (Land, Villa, Apartment)")
-    
-    df_clean_comp = df.dropna(subset=['price_cleaned', 'area_cleaned', 'price_per_sqm']).copy()
-    
-    if df_clean_comp.empty:
-        st.warning("No complete data available for comparison.")
-        return
-
-    # Average Price by Property Type
-    st.header("💰 Average Price / Property Type")
-    
-    avg_price_type = df_clean_comp.groupby('type')['price_cleaned'].mean().reset_index()
-    avg_price_type['price_million_cfa'] = avg_price_type['price_cleaned'] / 1000000
-    
-    fig_price_type = px.bar(
-        avg_price_type, 
-        x='type', 
-        y='price_million_cfa', 
-        color='type',
-        title="Average Price (M CFA) by Property Type"
-    )
-    fig_price_type.update_layout(xaxis_title="Property Type", yaxis_title="Average Price (M CFA)")
-    st.plotly_chart(fig_price_type, use_container_width=True)
-
-    st.markdown("---")
-    
-    # Average Price per sqm by Type and Zone
-    st.header("💲 Average Price per sqm by Type and Top Zones")
-    
-    # Group for price per sqm
-    price_sqm_comp = df_clean_comp.groupby(['type', 'city_zone'])['price_per_sqm'].mean().reset_index()
-    
-    # Filter zones (e.g., Top 20 most frequent zones across all types)
-    top_20_zones = df_clean_comp['city_zone'].value_counts().nlargest(20).index
-    price_sqm_comp = price_sqm_comp[price_sqm_comp['city_zone'].isin(top_20_zones)]
-
-    fig_sqm_comp = px.bar(
-        price_sqm_comp, 
-        x='city_zone', 
-        y='price_per_sqm', 
-        color='type', 
-        barmode='group',
-        title="Average Price per sqm (CFA) by Type and Zone (Top 20 Zones)"
-    )
-    fig_sqm_comp.update_layout(
-        xaxis_title="Geographic Zone", 
-        yaxis_title="Average Price / sqm (CFA)", 
-        yaxis=dict(tickformat=',.0f')
-    )
-    st.plotly_chart(fig_sqm_comp, use_container_width=True)
-
-
-def display_raw_data(df):
-    """Displays the raw and cleaned data."""
-    
-    st.title("📋 Raw and Cleaned Data")
-    
-    if df.empty:
-        st.warning("No data to display.")
-        return
-        
-    st.info("Use the filter to select the property type to display.")
-    
-    property_types = ['All'] + sorted(df['type'].unique().tolist())
-    selected_type = st.selectbox("Select Property Type:", property_types)
-    
-    if selected_type != 'All':
-        df_display = df[df['type'] == selected_type].copy()
-    else:
-        df_display = df.copy()
-
-    # Selecting relevant columns for a clear display
-    display_cols = ['type', 'city_zone', 'price_cleaned', 'area_cleaned', 'price_per_sqm', 'nb_rooms', 'nb_bathrooms', 'ad_link']
-    final_display_df = df_display[[col for col in display_cols if col in df_display.columns]].copy()
-    
-    # Renaming columns for user display
-    final_display_df.columns = ['Type', 'City/Zone', 'Price (CFA)', 'Area (sqm)', 'Price / sqm (CFA)', 'Nb Rooms', 'Nb Bathrooms', 'Ad Link']
-
-    st.markdown(f"""
-    <div class="data-container">
-        <h3>Data Overview (Cleaned)</h3>
+    st.markdown("""
+    <div class="custom-card">
+        <p style='font-size: 1.1em; color: #B8B8B8;'>
+            View and analyze your existing CSV data files from the data/ directory
+        </p>
     </div>
     """, unsafe_allow_html=True)
-
-    # Formatting numeric columns for readable display
-    st.dataframe(
-        final_display_df.style.format({
-            'Price (CFA)': "{:,.0f}",
-            'Area (sqm)': "{:,.0f}",
-            'Price / sqm (CFA)': "{:,.0f}"
-        }),
-        use_container_width=True,
-        hide_index=True
+    
+    data_type = st.selectbox(
+        "📂 Data type:",
+        ["🏡 Villas", "🏞️ Terrains", "🏢 Apartments"]
     )
+    
+    file_mapping = {
+        "🏡 Villas": "data/Villas.csv",
+        "🏞️ Terrains": "data/terrains_data.csv",
+        "🏢 Apartments": "data/Apartments_data.csv"
+    }
+    
+    file_path = file_mapping.get(data_type) # Use .get for safety
+    
+    try:
+        if file_path and os.path.exists(file_path):
+            df = pd.read_csv(file_path)
+            st.success(f"✅ File loaded: `{file_path}`")
+        else:
+             # Try loading from DB if CSV doesn't exist
+            table_mapping = {
+                "🏡 Villas": "villas",
+                "🏞️ Terrains": "terrains",
+                "🏢 Apartments": "apartments"
+            }
+            df = load_from_db(table_mapping[data_type])
+            if len(df) == 0:
+                 raise FileNotFoundError # Trigger the FileNotFoundError block if DB is also empty
 
-# --- Sidebar and Navigation ---
+        
+        # Display statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📊 Rows", df.shape[0])
+        with col2:
+            st.metric("📋 Columns", df.shape[1])
+        with col3:
+            st.metric("⚠️ Missing values", df.isnull().sum().sum())
+        with col4:
+            st.metric("🔄 Duplicates", df.duplicated().sum())
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Display data preview
+        st.markdown("### 👁️ Data Preview")
+        st.dataframe(df.head(20), use_container_width=True)
+        
+        # Missing values visualization
+        if df.isnull().sum().sum() > 0:
+            st.markdown("### ⚠️ Missing values per column")
+            missing_data = df.isnull().sum()
+            missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
+            
+            fig = px.bar(
+                x=missing_data.values,
+                y=missing_data.index,
+                orientation='h',
+                title="Distribution of missing values",
+                color=missing_data.values,
+                color_continuous_scale='Reds'
+            )
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font_color='#FAFAFA'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Download button
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label=f"📥 Download {data_type}",
+            data=csv,
+            file_name=f'{data_type.lower().replace(" ", "_")}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
+            mime='text/csv',
+            type="primary",
+            use_container_width=True
+        )
+        
+    except FileNotFoundError:
+        st.error(f"❌ File not found: `{file_path}`")
+        st.info("💡 Make sure your CSV files are in the 'data/' directory with the correct names or use the 'Scrape Data' section to generate new data.")
+        
+        uploaded_file = st.file_uploader("📤 Or upload your CSV file:", type=['csv'])
+        
+        if uploaded_file is not None:
+            df_uploaded = pd.read_csv(uploaded_file)
+            st.success("✅ File uploaded!")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Rows", df_uploaded.shape[0])
+            with col2:
+                st.metric("Columns", df_uploaded.shape[1])
+            with col3:
+                st.metric("Missing values", df_uploaded.isnull().sum().sum())
+            
+            st.dataframe(df_uploaded.head(10), use_container_width=True)
 
-# Logo and Title
-st.sidebar.markdown("""
-<div style='text-align: center; padding: 20px 0;'>
-    <h1 style='color: #FF6B6B;'>🏡</h1>
-    <h2 style='color: #f0f2f6;'>Real Estate Project</h2>
-    <p style='color: #B8B8B8;'>Dakar Data Analysis</p>
-</div>
----
-""", unsafe_allow_html=True)
+# Dashboard page
+elif page == "📊 Dashboard":
+    st.markdown('<h2 class="section-header">📊 Analytical Dashboard</h2>', unsafe_allow_html=True)
+    
+    # Data source selector
+    data_source = st.selectbox(
+        "📂 Data source:",
+        ["🏡 Villas", "🏞️ Terrains", "🏢 Apartments"]
+    )
+    
+    # Try to load from CSV first, then from database
+    df = pd.DataFrame()
+    try:
+        file_mapping = {
+            "🏡 Villas": "data/Villas.csv",
+            "🏞️ Terrains": "data/terrains_data.csv",
+            "🏢 Apartments": "data/Apartments_data.csv"
+        }
+        df = pd.read_csv(file_mapping[data_source])
+        st.info("📁 Data loaded from CSV file")
+    except:
+        table_mapping = {
+            "🏡 Villas": "villas",
+            "🏞️ Terrains": "terrains",
+            "🏢 Apartments": "apartments"
+        }
+        df = load_from_db(table_mapping[data_source])
+        if len(df) > 0:
+            st.info("💾 Data loaded from database")
+    
+    if len(df) > 0:
+        # Clean price data
+        if 'price' in df.columns:
+            # Enhanced cleaning for price (removing non-numeric characters before conversion)
+            df['price_numeric'] = df['price'].astype(str).str.replace(r'[^\d]', '', regex=True)
+            df['price_numeric'] = pd.to_numeric(df['price_numeric'], errors='coerce')
+            df = df[df['price_numeric'].notna()]
+        
+        # Display metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📊 Total Records", len(df))
+        with col2:
+            if 'address' in df.columns:
+                st.metric("📍 Locations", df['address'].nunique())
+        with col3:
+            if 'price_numeric' in df.columns and len(df)>0:
+                avg_price = df['price_numeric'].mean()
+                st.metric("💰 Avg Price", f"{avg_price:,.0f} FCFA")
+            else:
+                 st.metric("💰 Avg Price", "N/A")
 
-menu = [
-    "Home", 
-    "Dashboard: Lands", 
-    "Dashboard: Villas", 
-    "Dashboard: Apartments",
-    "Comparative Analysis",
-    "Raw Data"
-]
+        with col4:
+            if 'number_of_rooms' in df.columns and len(df)>0:
+                # Safe way to extract numeric room count and calculate mean
+                avg_rooms_series = df['number_of_rooms'].astype(str).str.extract('(\d+)').astype(float)
+                avg_rooms = avg_rooms_series.mean() if not avg_rooms_series.empty else 0
+                st.metric("🛏️ Avg Rooms", f"{avg_rooms:.1f}")
+            elif 'surface' in df.columns and data_source == "🏞️ Terrains" and len(df)>0:
+                # Assuming surface is in the format 'X m2' or just 'X' (details used as surface)
+                surface_numeric_series = df['surface'].astype(str).str.extract('(\d+)').astype(float)
+                avg_surface = surface_numeric_series.mean() if not surface_numeric_series.empty else 0
+                st.metric("📏 Avg Surface", f"{avg_surface:,.0f} m²")
+            else:
+                 st.metric("Data Point", "N/A")
 
-choice = st.sidebar.radio("Navigation", menu)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Visualizations
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if 'address' in df.columns:
+                address_counts = df['address'].value_counts().head(10)
+                fig1 = px.bar(
+                    x=address_counts.values,
+                    y=address_counts.index,
+                    orientation='h',
+                    title="🏆 Top 10 Locations",
+                    labels={'x': 'Count', 'y': 'Location'},
+                    color=address_counts.values,
+                    color_continuous_scale='Reds'
+                )
+                fig1.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='#FAFAFA'
+                )
+                st.plotly_chart(fig1, use_container_width=True)
+        
+        with col2:
+            if 'price_numeric' in df.columns and len(df)>0:
+                # Filter out extreme prices for a better visual distribution (e.g., top 95%)
+                price_limit = df['price_numeric'].quantile(0.95) if df['price_numeric'].quantile(0.95) > 0 else df['price_numeric'].max()
+                df_filtered = df[df['price_numeric'] <= price_limit]
+                
+                fig2 = px.histogram(
+                    df_filtered,
+                    x='price_numeric',
+                    title=f"💰 Price Distribution (up to {price_limit:,.0f} FCFA)",
+                    labels={'price_numeric': 'Price (FCFA)'},
+                    color_discrete_sequence=['#FF6B6B']
+                )
+                fig2.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='#FAFAFA'
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+            elif data_source == "🏞️ Terrains" and 'surface' in df.columns and len(df)>0:
+                # Alternative visualization for terrains (e.g., Surface distribution)
+                surface_numeric_series = df['surface'].astype(str).str.extract('(\d+)').astype(float).dropna()
+                surface_limit = surface_numeric_series.quantile(0.95) if surface_numeric_series.quantile(0.95) > 0 else surface_numeric_series.max()
+                
+                fig2_alt = px.histogram(
+                    surface_numeric_series[surface_numeric_series <= surface_limit],
+                    x=surface_numeric_series.name,
+                    title=f"📏 Surface Area Distribution (up to {surface_limit:,.0f} m²)",
+                    labels={surface_numeric_series.name: 'Surface Area (m²)'},
+                    color_discrete_sequence=['#FFE66D']
+                )
+                fig2_alt.update_layout(
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='#FAFAFA'
+                )
+                st.plotly_chart(fig2_alt, use_container_width=True)
 
-# --- Application Logic ---
+        
+        # Data table
+        st.markdown('<h3 class="section-header">Raw Data Table</h3>', unsafe_allow_html=True)
+        st.dataframe(df, use_container_width=True)
+        
+    else:
+        st.warning(f"❌ No data available for {data_source} (check CSV files in 'data/' or database 'coinafrica.db').")
 
-if choice == "Home":
-    display_home()
+# Evaluation page
+elif page == "📝 Evaluation":
+    st.markdown('<h2 class="section-header">📝 Project Evaluation & Outlook</h2>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="custom-card">
+        <h3 style='color: #FF6B6B;'>Summary and Achievements</h3>
+        <p style='color: #B8B8B8; font-size: 1.1em;'>
+            This application successfully integrates an autonomous web scraper (Coinafrica) with a Streamlit interface. Key achievements include:
+        </p>
+        <ul>
+            <li style='color: #B8B8B8;'>**Data Persistence:** Using SQLite to securely store scraped data.</li>
+            <li style='color: #B8B8B8;'>**Real-time Scraping:** Ability to collect new data from the Coinafrica platform on demand.</li>
+            <li style='color: #B8B8B8;'>**Interactive Dashboard:** Initial analytical views of prices and locations using Plotly.</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<h2 class="section-header">🚀 Future Improvements (Next Steps)</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        <div class="custom-card">
+            <h4 style='color: #FFE66D;'>Data Cleaning and Standardization</h4>
+            <p style='color: #B8B8B8;'>
+                Implement more rigorous cleaning logic to automatically convert all price fields (e.g., "15 million CFA" or "15000000") and area fields ("300 m2") into clean numerical values for better statistical analysis (e.g., calculating price per square meter).
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="custom-card">
+            <h4 style='color: #FFE66D;'>Geographic Visualization</h4>
+            <p style='color: #B8B8B8;'>
+                Use a library like **Folium** or **GeoPy** to perform geocoding on the addresses and display properties on an interactive map. This would provide valuable insights into property distribution and price concentration by district.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-elif choice == "Dashboard: Lands":
-    display_dashboard(df_combined, "Land")
-
-elif choice == "Dashboard: Villas":
-    display_dashboard(df_combined, "Villa")
-
-elif choice == "Dashboard: Apartments":
-    display_dashboard(df_combined, "Apartment")
-
-elif choice == "Comparative Analysis":
-    display_comparison(df_combined)
-
-elif choice == "Raw Data":
-    display_raw_data(df_combined)
-
-# --- Footer ---
+# Final footer
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; padding: 20px;'>
     <p style='color: #B8B8B8; font-size: 1em;'>
-        🏡 <strong style='color: #FF6B6B;'>Dakar Real Estate</strong> © 2024 • Developed with Streamlit
+        🏘️ <strong style='color: #FF6B6B;'>Coinafrica Scraper</strong> © 2024 • Developed with Streamlit & Python
     </p>
 </div>
 """, unsafe_allow_html=True)
