@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import re 
-import os 
+import os # Necessary for path handling
 from requests import get
 from bs4 import BeautifulSoup as bs
 from datetime import datetime
@@ -108,6 +108,7 @@ def extract_city(address):
 @st.cache_data
 def load_and_clean_data(file_name, property_type):
     """Loads, cleans, and standardizes the data based on the file type's column structure."""
+    # Load files from the 'data' directory
     file_path = os.path.join('data', file_name)
     
     try:
@@ -118,8 +119,7 @@ def load_and_clean_data(file_name, property_type):
 
     df['type'] = property_type
 
-    # --- Step 1: Map Specific Columns based on File Type ---
-    # We define the specific columns found in the CSV headers for each type
+    # --- Step 1: Map Specific Columns based on File Type (from notebook analysis) ---
     col_mapping = {}
     if property_type == "Land":
         # Columns based on terrains_data.csv snippet
@@ -132,22 +132,22 @@ def load_and_clean_data(file_name, property_type):
     elif property_type == "Villa":
         # Columns based on Villas.csv snippet and notebook (assuming 'price' exists)
         col_mapping = {
-            'price_raw': 'price', # Assumed name for price column (V3 in notebook)
-            'area_raw': 'Surface', #
-            'address_raw': 'Address', #
-            'rooms_raw': 'number of rooms', #
-            'baths_raw': 'number of bathrooms', #
-            'link_raw': 'Containers_link' #
+            'price_raw': 'price', 
+            'area_raw': 'Surface', 
+            'address_raw': 'Address', 
+            'rooms_raw': 'number of rooms', 
+            'baths_raw': 'number of bathrooms', 
+            'link_raw': 'Containers_link' 
         }
     elif property_type == "Apartment":
-        # Columns based on Apartments_data.csv snippet and notebook (V2: price)
+        # Columns based on Apartments_data.csv snippet and notebook
         col_mapping = {
-            'price_raw': 'price', # Assumed name for price column (V2 in notebook)
-            'area_raw': 'surface area', #
-            'address_raw': 'address', #
-            'rooms_raw': 'number_of_rooms', #
-            'baths_raw': 'number_of_bathrooms', #
-            'link_raw': 'containers_links' #
+            'price_raw': 'price', 
+            'area_raw': 'surface area', 
+            'address_raw': 'address', 
+            'rooms_raw': 'number_of_rooms', 
+            'baths_raw': 'number_of_bathrooms', 
+            'link_raw': 'containers_links' 
         }
 
     # --- Step 2: Apply Cleaning and Standardization ---
@@ -208,7 +208,7 @@ def load_and_clean_data(file_name, property_type):
     return df_final
 
 
-# Data Loading (Cached for speed) - Uses the modified function
+# Data Loading (Cached for speed) 
 all_data = []
 
 # List of files to load from the 'data' directory
@@ -234,13 +234,14 @@ else:
     st.error("No data could be loaded correctly. Please check that your files are in the 'data' directory and contain the expected columns.")
 
 
-# --- Visualization Functions (Same as before) ---
+# --- Visualization Functions ---
 
 def display_home():
     """Displays the home page with project description and links."""
     st.title("🏡 Dakar Real Estate Market Analysis")
     
-    st.image("Capture d’écran du 2025-12-09 11-19-03.png", caption="Adapted Application Example (based on your image)", use_column_width=True)
+    # *** CORRECTION: Image loading line commented out to fix MediaFileStorageError ***
+    # st.image("Capture d’écran du 2025-12-09 11-19-03.png", caption="Adapted Application Example (based on your image)", use_column_width=True)
 
     st.markdown("""
     <div class="custom-card">
@@ -475,7 +476,7 @@ def display_raw_data(df):
         hide_index=True
     )
 
-# --- Sidebar and Navigation (Same as before) ---
+# --- Sidebar and Navigation ---
 
 # Logo and Title
 st.sidebar.markdown("""
@@ -498,7 +499,7 @@ menu = [
 
 choice = st.sidebar.radio("Navigation", menu)
 
-# --- Application Logic (Same as before) ---
+# --- Application Logic ---
 
 if choice == "Home":
     display_home()
@@ -518,7 +519,7 @@ elif choice == "Comparative Analysis":
 elif choice == "Raw Data":
     display_raw_data(df_combined)
 
-# --- Footer (Same as before) ---
+# --- Footer ---
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("""
