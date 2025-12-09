@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import re 
+import os 
 from requests import get
 from bs4 import BeautifulSoup as bs
-import sqlite3
 from datetime import datetime
 import time
-import re 
-import os # Import necessary for path handling
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -22,7 +21,7 @@ st.set_page_config(
 KOBO_TOOLBOX_LINK = "https://ee.kobotoolbox.org/single/g3s1QGVs"
 GOOGLE_FORM_LINK = "https://docs.google.com/forms/d/e/1FAIpQLSeJFo9UsSKWnlhXA0aHYVxeKd06w1FthiCluXrqmcXutbA/viewform?usp=dialog"
 
-# --- Custom CSS (Adapted from the example app) ---
+# --- Custom CSS (Same as before) ---
 st.markdown("""
 <style>
     /* General Style */
@@ -64,10 +63,51 @@ st.markdown("""
 
 # --- Data Cleaning Functions ---
 
+def clean_price(price):
+    """Clean the price column (CFA to float, handling 'millions' and 'on demand')."""
+    if pd.isna(price) or str(price).strip().lower() in ['prix sur demande', 'price on demand', '']:
+        return None
+    price_str = str(price).replace(' CFA', '').replace(' ', '').replace('FCFA', '').replace('.', '') 
+    
+    if 'million' in price_str.lower():
+         match = re.search(r'(\d+(\.\d+)?)', price_str.lower())
+         if match:
+             try:
+                 return float(match.group(0)) * 1000000
+             except ValueError:
+                 return None
+    
+    try:
+        return float(price_str)
+    except ValueError:
+        return None
+
+def clean_area(area):
+    """Clean the area column (extract m² value)."""
+    if pd.isna(area) or area == '' or isinstance(area, (int, float)):
+        return area
+
+    area_str = str(area).replace('m2', '').replace('m²', '').replace(' ', '').replace(',', '.')
+    match = re.search(r'\d+(\.\d+)?', area_str)
+    if match:
+        try:
+            return float(match.group(0))
+        except ValueError:
+            return None
+    return None
+
+def extract_city(address):
+    """Extract City/Zone from the address string."""
+    if pd.isna(address) or address == '':
+        return 'Unspecified'
+    parts = str(address).split(',')
+    if 'sénégal' in str(address).lower() and len(parts) >= 2:
+        return parts[-2].strip()
+    return parts[0].strip()
+
 @st.cache_data
 def load_and_clean_data(file_name, property_type):
-    """Loads, cleans, and standardizes the data from the 'data/' directory."""
-    # MODIFICATION CLÉ ICI : Construire le chemin d'accès
+    """Loads, cleans, and standardizes the data based on the file type's column structure."""
     file_path = os.path.join('data', file_name)
     
     try:
@@ -78,97 +118,92 @@ def load_and_clean_data(file_name, property_type):
 
     df['type'] = property_type
 
-    # 1. Price Cleaning
-    def clean_price(price):
-        if pd.isna(price) or str(price).strip().lower() in ['prix sur demande', 'price on demand', '']:
-            return None
-        price_str = str(price).replace(' CFA', '').replace(' ', '').replace('FCFA', '').replace('.', '') 
-        
-        if 'million' in price_str.lower():
-             match = re.search(r'(\d+(\.\d+)?)', price_str.lower())
-             if match:
-                 try:
-                     return float(match.group(0)) * 1000000
-                 except ValueError:
-                     return None
-        
-        try:
-            return float(price_str)
-        except ValueError:
-            return None
+    # --- Step 1: Map Specific Columns based on File Type ---
+    # We define the specific columns found in the CSV headers for each type
+    col_mapping = {}
+    if property_type == "Land":
+        # Columns based on terrains_data.csv snippet
+        col_mapping = {
+            'price_raw': 'price', 
+            'area_raw': 'area', 
+            'address_raw': 'address', 
+            'link_raw': 'containers'
+        }
+    elif property_type == "Villa":
+        # Columns based on Villas.csv snippet and notebook (assuming 'price' exists)
+        col_mapping = {
+            'price_raw': 'price', # Assumed name for price column (V3 in notebook)
+            'area_raw': 'Surface', #
+            'address_raw': 'Address', #
+            'rooms_raw': 'number of rooms', #
+            'baths_raw': 'number of bathrooms', #
+            'link_raw': 'Containers_link' #
+        }
+    elif property_type == "Apartment":
+        # Columns based on Apartments_data.csv snippet and notebook (V2: price)
+        col_mapping = {
+            'price_raw': 'price', # Assumed name for price column (V2 in notebook)
+            'area_raw': 'surface area', #
+            'address_raw': 'address', #
+            'rooms_raw': 'number_of_rooms', #
+            'baths_raw': 'number_of_bathrooms', #
+            'link_raw': 'containers_links' #
+        }
 
-    price_cols = ['price', 'Prix']
-    price_col = next((col for col in price_cols if col in df.columns), None)
-    
-    if price_col:
+    # --- Step 2: Apply Cleaning and Standardization ---
+
+    # Price
+    price_col = col_mapping.get('price_raw')
+    if price_col and price_col in df.columns:
         df['price_cleaned'] = df[price_col].apply(clean_price)
     else:
-        st.warning(f"Price column ('price', 'Prix') not found for {property_type}. Cannot analyze prices.")
+        st.warning(f"Price column ('{price_col}' or 'price') not found for {property_type}.")
         df['price_cleaned'] = None
 
-
-    # 2. Area Cleaning
-    def clean_area(area):
-        if pd.isna(area) or area == '' or isinstance(area, (int, float)):
-            return area
-
-        area_str = str(area).replace('m2', '').replace('m²', '').replace(' ', '').replace(',', '.')
-        match = re.search(r'\d+(\.\d+)?', area_str)
-        if match:
-            try:
-                return float(match.group(0))
-            except ValueError:
-                return None
-        return None
-
-    area_cols = ['area', 'Surface', 'surface area', 'Superficie']
-    area_col = next((col for col in area_cols if col in df.columns), None)
-
-    if area_col:
+    # Area
+    area_col = col_mapping.get('area_raw')
+    if area_col and area_col in df.columns:
         df['area_cleaned'] = df[area_col].apply(clean_area)
     else:
-        st.warning(f"Area column ('area', 'Surface', etc.) not found for {property_type}. Cannot analyze areas.")
+        st.warning(f"Area column ('{area_col}') not found for {property_type}.")
         df['area_cleaned'] = None
     
-    # 3. Calculate Price per sqm
-    if 'price_cleaned' in df.columns and 'area_cleaned' in df.columns:
+    # Price per sqm calculation
+    if df['price_cleaned'].notna().any() and df['area_cleaned'].notna().any():
         df['price_per_sqm'] = df.apply(
             lambda row: row['price_cleaned'] / row['area_cleaned'] if row['area_cleaned'] and row['area_cleaned'] > 0 else None,
             axis=1
         )
+    else:
+         df['price_per_sqm'] = None
     
-    # 4. Address Cleaning / City Extraction
-    address_col = next((col for col in ['address', 'Address'] if col in df.columns), None)
-    if address_col:
-        def extract_city(address):
-            if pd.isna(address) or address == '':
-                return 'Unspecified'
-            parts = str(address).split(',')
-            if 'sénégal' in str(address).lower() and len(parts) >= 2:
-                return parts[-2].strip()
-            return parts[0].strip()
-
+    # City/Zone Extraction
+    address_col = col_mapping.get('address_raw')
+    if address_col and address_col in df.columns:
         df['city_zone'] = df[address_col].apply(extract_city)
     else:
         df['city_zone'] = 'Unspecified'
-        st.warning(f"Address column ('address', 'Address') not found for {property_type}.")
+        st.warning(f"Address column ('{address_col}') not found for {property_type}.")
 
+    # Rooms and Bathrooms (for Villas and Apartments)
+    df['nb_rooms'] = None
+    df['nb_bathrooms'] = None
 
-    # Standardize other columns
-    df = df.rename(columns={
-        'number of rooms': 'nb_rooms',
-        'number_of_rooms': 'nb_rooms',
-        'number of bathrooms': 'nb_bathrooms',
-        'number_of_bathrooms': 'nb_bathrooms',
-        'web_scraper_start_url': 'source_page_url',
-        'Containers_link': 'ad_link',
-        'containers_links': 'ad_link',
-        'containers': 'ad_link',
-    })
+    rooms_col = col_mapping.get('rooms_raw')
+    if rooms_col and rooms_col in df.columns:
+        df['nb_rooms'] = pd.to_numeric(df[rooms_col], errors='coerce')
     
-    # Define final columns for the analysis and raw data table
+    baths_col = col_mapping.get('baths_raw')
+    if baths_col and baths_col in df.columns:
+        df['nb_bathrooms'] = pd.to_numeric(df[baths_col], errors='coerce')
+        
+    # Link
+    link_col = col_mapping.get('link_raw')
+    df['ad_link'] = df[link_col] if link_col and link_col in df.columns else None
+
+    # Final columns to keep
     final_cols = ['type', 'city_zone', 'price_cleaned', 'area_cleaned', 'price_per_sqm', 'nb_rooms', 'nb_bathrooms', 'ad_link']
-    df_final = df[[col for col in final_cols if col in df.columns] + [col for col in df.columns if col.startswith('web_scraper_') or col in ['address', 'Address']]].copy()
+    df_final = df[[col for col in final_cols if col in df.columns] + [col for col in df.columns if col.startswith('web_scraper_') or col in ['address', 'Address', 'Surface', 'area', 'surface area']]].copy()
 
     return df_final
 
@@ -196,9 +231,10 @@ if all_data:
     df_combined = pd.concat(all_data, ignore_index=True)
 else:
     df_combined = pd.DataFrame()
-    st.error("No data could be loaded correctly. Please check that your files are in the 'data' directory.")
+    st.error("No data could be loaded correctly. Please check that your files are in the 'data' directory and contain the expected columns.")
 
-# --- Visualization Functions (NO CHANGE - Copied from previous English version) ---
+
+# --- Visualization Functions (Same as before) ---
 
 def display_home():
     """Displays the home page with project description and links."""
@@ -439,7 +475,7 @@ def display_raw_data(df):
         hide_index=True
     )
 
-# --- Sidebar and Navigation (NO CHANGE) ---
+# --- Sidebar and Navigation (Same as before) ---
 
 # Logo and Title
 st.sidebar.markdown("""
@@ -462,7 +498,7 @@ menu = [
 
 choice = st.sidebar.radio("Navigation", menu)
 
-# --- Application Logic (NO CHANGE) ---
+# --- Application Logic (Same as before) ---
 
 if choice == "Home":
     display_home()
@@ -482,7 +518,7 @@ elif choice == "Comparative Analysis":
 elif choice == "Raw Data":
     display_raw_data(df_combined)
 
-# --- Footer (NO CHANGE) ---
+# --- Footer (Same as before) ---
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("""
