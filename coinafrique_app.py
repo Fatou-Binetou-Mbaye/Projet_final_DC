@@ -7,7 +7,8 @@ from bs4 import BeautifulSoup as bs
 import sqlite3
 from datetime import datetime
 import time
-import re # Import for regular expressions
+import re 
+import os # Import necessary for path handling
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -64,12 +65,15 @@ st.markdown("""
 # --- Data Cleaning Functions ---
 
 @st.cache_data
-def load_and_clean_data(file_path, property_type):
-    """Loads, cleans, and standardizes the data."""
+def load_and_clean_data(file_name, property_type):
+    """Loads, cleans, and standardizes the data from the 'data/' directory."""
+    # MODIFICATION CLÉ ICI : Construire le chemin d'accès
+    file_path = os.path.join('data', file_name)
+    
     try:
         df = pd.read_csv(file_path)
     except FileNotFoundError:
-        st.error(f"File not found: {file_path}")
+        st.error(f"File not found: {file_path}. Please ensure '{file_name}' is in the 'data' directory.")
         return pd.DataFrame()
 
     df['type'] = property_type
@@ -78,12 +82,9 @@ def load_and_clean_data(file_path, property_type):
     def clean_price(price):
         if pd.isna(price) or str(price).strip().lower() in ['prix sur demande', 'price on demand', '']:
             return None
-        # Remove ' CFA', spaces, commas, dots (for thousands separator)
         price_str = str(price).replace(' CFA', '').replace(' ', '').replace('FCFA', '').replace('.', '') 
         
-        # Check for millions format (e.g., '125 millions')
         if 'million' in price_str.lower():
-             # Extract numbers and multiply by a million
              match = re.search(r'(\d+(\.\d+)?)', price_str.lower())
              if match:
                  try:
@@ -91,13 +92,11 @@ def load_and_clean_data(file_path, property_type):
                  except ValueError:
                      return None
         
-        # Simple number conversion
         try:
             return float(price_str)
         except ValueError:
             return None
 
-    # Identify and apply price cleaning (trying common column names)
     price_cols = ['price', 'Prix']
     price_col = next((col for col in price_cols if col in df.columns), None)
     
@@ -114,7 +113,6 @@ def load_and_clean_data(file_path, property_type):
             return area
 
         area_str = str(area).replace('m2', '').replace('m²', '').replace(' ', '').replace(',', '.')
-        # Use regex to extract the first number
         match = re.search(r'\d+(\.\d+)?', area_str)
         if match:
             try:
@@ -123,7 +121,6 @@ def load_and_clean_data(file_path, property_type):
                 return None
         return None
 
-    # Identify and apply area cleaning (trying common column names)
     area_cols = ['area', 'Surface', 'surface area', 'Superficie']
     area_col = next((col for col in area_cols if col in df.columns), None)
 
@@ -135,7 +132,6 @@ def load_and_clean_data(file_path, property_type):
     
     # 3. Calculate Price per sqm
     if 'price_cleaned' in df.columns and 'area_cleaned' in df.columns:
-        # Avoid division by zero or None values
         df['price_per_sqm'] = df.apply(
             lambda row: row['price_cleaned'] / row['area_cleaned'] if row['area_cleaned'] and row['area_cleaned'] > 0 else None,
             axis=1
@@ -148,7 +144,6 @@ def load_and_clean_data(file_path, property_type):
             if pd.isna(address) or address == '':
                 return 'Unspecified'
             parts = str(address).split(',')
-            # Take the second to last part if 'sénégal' is present, otherwise take the first part
             if 'sénégal' in str(address).lower() and len(parts) >= 2:
                 return parts[-2].strip()
             return parts[0].strip()
@@ -159,7 +154,7 @@ def load_and_clean_data(file_path, property_type):
         st.warning(f"Address column ('address', 'Address') not found for {property_type}.")
 
 
-    # Standardize other columns (rooms/bathrooms)
+    # Standardize other columns
     df = df.rename(columns={
         'number of rooms': 'nb_rooms',
         'number_of_rooms': 'nb_rooms',
@@ -178,39 +173,32 @@ def load_and_clean_data(file_path, property_type):
     return df_final
 
 
-# Data Loading (Cached for speed)
+# Data Loading (Cached for speed) - Uses the modified function
 all_data = []
 
-# Attempt to load files
-try:
-    data_lands = load_and_clean_data("terrains_data.csv", "Land")
-    if not data_lands.empty:
-        all_data.append(data_lands)
-except Exception as e:
-    st.error(f"Error loading or cleaning terrains_data.csv: {e}")
+# List of files to load from the 'data' directory
+FILES_TO_LOAD = [
+    ("terrains_data.csv", "Land"),
+    ("Villas.csv", "Villa"),
+    ("Apartments_data.csv", "Apartment")
+]
 
-try:
-    data_villas = load_and_clean_data("Villas.csv", "Villa")
-    if not data_villas.empty:
-        all_data.append(data_villas)
-except Exception as e:
-    st.error(f"Error loading or cleaning Villas.csv: {e}")
-
-try:
-    data_apartments = load_and_clean_data("Apartments_data.csv", "Apartment")
-    if not data_apartments.empty:
-        all_data.append(data_apartments)
-except Exception as e:
-    st.error(f"Error loading or cleaning Apartments_data.csv: {e}")
+for file_name, property_type in FILES_TO_LOAD:
+    try:
+        data = load_and_clean_data(file_name, property_type)
+        if not data.empty:
+            all_data.append(data)
+    except Exception as e:
+        st.error(f"Error loading or cleaning {file_name}: {e}")
 
 # Concatenate cleaned data
 if all_data:
     df_combined = pd.concat(all_data, ignore_index=True)
 else:
     df_combined = pd.DataFrame()
-    st.error("No data could be loaded correctly. Please check your files.")
+    st.error("No data could be loaded correctly. Please check that your files are in the 'data' directory.")
 
-# --- Visualization Functions ---
+# --- Visualization Functions (NO CHANGE - Copied from previous English version) ---
 
 def display_home():
     """Displays the home page with project description and links."""
@@ -451,7 +439,7 @@ def display_raw_data(df):
         hide_index=True
     )
 
-# --- Sidebar and Navigation ---
+# --- Sidebar and Navigation (NO CHANGE) ---
 
 # Logo and Title
 st.sidebar.markdown("""
@@ -474,7 +462,7 @@ menu = [
 
 choice = st.sidebar.radio("Navigation", menu)
 
-# --- Application Logic ---
+# --- Application Logic (NO CHANGE) ---
 
 if choice == "Home":
     display_home()
@@ -494,7 +482,7 @@ elif choice == "Comparative Analysis":
 elif choice == "Raw Data":
     display_raw_data(df_combined)
 
-# --- Footer ---
+# --- Footer (NO CHANGE) ---
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("""
